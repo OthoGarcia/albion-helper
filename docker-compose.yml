@@ -12,6 +12,22 @@ services:
     environment:
       - APP_ENV=dev
       - SCAN_CACHEABLE=false
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_container
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root        # senha do root
+      MYSQL_DATABASE: albion             # nome do banco que será criado automaticamente
+      MYSQL_USER: albion               # usuário adicional (opcional)
+      MYSQL_PASSWORD: albion           # senha do usuário (opcional)
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+volumes:
+  mysql_data:
 
 networks:
   default:

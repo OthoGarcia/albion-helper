@@ -20,10 +20,6 @@ return [
     'scan_cacheable' => env('SCAN_CACHEABLE', false),
     StdoutLoggerInterface::class => [
         'log_level' => [
-            LogLevel::ALERT,
-            LogLevel::CRITICAL,
-            LogLevel::DEBUG,
-            LogLevel::EMERGENCY,
             LogLevel::ERROR,
             LogLevel::INFO,
             LogLevel::NOTICE,
