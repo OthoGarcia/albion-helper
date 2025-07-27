@@ -24,4 +24,9 @@ class City extends Model
      * The attributes that should be cast to native types.
      */
     protected array $casts = [];
+
+    public function itemPrices()
+    {
+        return $this->hasMany(CityItemPrice::class, 'city_id', 'id');
+    }
 }
