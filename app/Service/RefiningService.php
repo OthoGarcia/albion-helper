@@ -55,7 +55,7 @@ class RefiningService
         }
         $keys = array_keys($itemsData);
         $refinements = Recipe::whereIn('item_unique_name', $keys)
-            ->with('ingredients')
+            ->with(['ingredients'])
             ->get();
         foreach ($refinements as $refinement) {
             $itemName = $refinement->item->item_unique_name;
