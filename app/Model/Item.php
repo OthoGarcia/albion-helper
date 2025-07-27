@@ -31,6 +31,10 @@ class Item extends Model
 
     public function stats() { return $this->hasMany(ItemStat::class, 'item_unique_name'); }
     public function recipes() { return $this->hasMany(Recipe::class, 'item_unique_name'); }
+    public function itemPrices()
+    {
+        return $this->hasMany(CityItemPrice::class, 'item_unique_name');
+    }
 
     public function getItemUniqueName(): string
     {

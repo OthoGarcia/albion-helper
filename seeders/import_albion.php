@@ -23,9 +23,8 @@ class ImportAlbion extends Seeder
         $response = $client->get('https://raw.githubusercontent.com/ao-data/ao-bin-dumps/refs/heads/master/items.json');
         $json = $response->getBody()->getContents();
         $all = json_decode($json, true)['items'];
-        $arrayTypes = ['simpleitem', 'consumableitem', 'hideoutitem', 'consumablefrominventoryitem'];
-        // $arrayTypes = ['hideoutitem'];
-        $objectTypes = ['hideoutitem'];
+        $arrayTypes = ['simpleitem', 'consumableitem', 'hideoutitem', 'consumablefrominventoryitem', 'farmableitem', 'rewardtoken', 'equipmentitem'];
+        $objectTypes = ['hideoutitem', 'rewardtoken'];
         $total = 0;
         foreach ($arrayTypes as $type) {
             $total += count($all[$type]);
@@ -91,6 +90,7 @@ class ImportAlbion extends Seeder
 
     private function buildDependencies(Item $item, array $itm): void
     {
+       
         try {
             if (isset($itm['Stats']) && is_array($itm['Stats'])) {
                 foreach ($itm['Stats'] as $stat) {
@@ -110,16 +110,10 @@ class ImportAlbion extends Seeder
                         'conditions' => $rec['Conditions'] ?? null,
                         'crafting_focus' => $rec['@craftingfocus'] ?? null
                     ]);
-                    $this->buildRecipeIngredients($recipe, $rec['craftresource'] ?? []);
-                    foreach ($rec['Skills'] ?? [] as $sk) {
-                        RecipeSkill::create([
-                            'recipe_id' => $recipe->id,
-                            'skill_name' => $sk['Name'],
-                            'skill_level' => $sk['Level'] ?? null,
-                            'experience' => $sk['Experience'] ?? null,
-                            'boostable' => !empty($sk['Boostable'])
-                        ]);
-                    }
+ 
+                    $ingredients = !empty($rec['craftresource']) ? $rec['craftresource'] : $itm['craftingrequirements']['craftresource'] ?? [];
+                 
+                    $this->buildRecipeIngredients($recipe, $ingredients);
                 }
             }
                     
@@ -135,8 +129,9 @@ class ImportAlbion extends Seeder
         if (empty($ingredients)) {
             return;
         }
+        $recipesIng = [];
         if (array_key_exists('@uniquename', $ingredients)) {
-            RecipeIngredient::create([
+            $recipesIng[] = RecipeIngredient::create([
                 'recipe_id' => $recipe->id,
                 'ingredient_item_unique_name' => $ingredients['@uniquename'],
                 'quantity' => $ingredients['@count'] ?? 1,
@@ -145,7 +140,7 @@ class ImportAlbion extends Seeder
             return;
         }
         foreach ($ingredients as $ing) {
-            RecipeIngredient::create([
+            $recipesIng[] =RecipeIngredient::create([
                 'recipe_id' => $recipe->id,
                 'ingredient_item_unique_name' => $ing['@uniquename'],
                 'quantity' => $ing['@count'] ?? 1,

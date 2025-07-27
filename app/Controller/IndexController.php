@@ -12,16 +12,13 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Service\RefiningService;
+
 class IndexController extends AbstractController
 {
-    public function index()
+    public function index(RefiningService $refiningService)
     {
-        $user = $this->request->input('user', 'Hyperf');
-        $method = $this->request->getMethod();
-
-        return [
-            'method' => $method,
-            'message' => "Hello {$user}.",
-        ];
+        $items = $refiningService->getMostProfitableRefinement([]);
+        return $this->response->json($items);
     }
 }
