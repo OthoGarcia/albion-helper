@@ -104,16 +104,18 @@ class ImportAlbion extends Seeder
                 foreach ($itm['craftingrequirements'] as $rec) {
                     $recipe = Recipe::create([
                         'item_unique_name' => $item->item_unique_name,
-                        'output_quantity' => $rec['@amountcrafted'] ?? 1,
-                        'crafting_time' => $rec['@time'] ?? null,
-                        'recipe_type' => $rec['Type'] ?? null,
-                        'conditions' => $rec['Conditions'] ?? null,
-                        'crafting_focus' => $rec['@craftingfocus'] ?? null
+                        'output_quantity' => $rec['@amountcrafted'] ?? $itm['craftingrequirements']['@amountcrafted'] ?? 1,
+                        'crafting_time' => $rec['@time'] ?? $itm['craftingrequirements']['@time'] ?? null,
+                        'recipe_type' => $rec['Type'] ?? $itm['craftingrequirements']['Type'] ?? null,
+                        'conditions' => $rec['Conditions'] ?? $itm['craftingrequirements']['Conditions'] ?? null,
+                        'crafting_focus' => $rec['@craftingfocus'] ?? $itm['craftingrequirements']['@craftingfocus'] ?? null
                     ]);
- 
-                    $ingredients = !empty($rec['craftresource']) ? $rec['craftresource'] : $itm['craftingrequirements']['craftresource'] ?? [];
-                 
-                    $this->buildRecipeIngredients($recipe, $ingredients);
+                    if (empty($rec['craftresource'])) {
+                        $this->buildRecipeIngredients($recipe, $itm['craftingrequirements']['craftresource'] ?? []);
+                        break;
+                    } else {    
+                        $this->buildRecipeIngredients($recipe, $rec['craftresource'] ?? []);
+                    }
                 }
             }
                     
