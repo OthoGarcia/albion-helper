@@ -13,6 +13,8 @@ LABEL maintainer="Hyperf Developers <group@hyperf.io>" version="1.0" license="MI
 ##
 # --build-arg timezone=Asia/Shanghai
 ARG timezone
+ARG INSTALL_XDEBUG=false
+
 
 ENV TIMEZONE=${timezone:-"Asia/Shanghai"} \
     APP_ENV=prod \
@@ -40,6 +42,20 @@ RUN set -ex \
     && rm -rf /var/cache/apk/* /tmp/* /usr/share/man \
     && echo -e "\033[42;37m Build Completed :).\033[0m\n"
 
+
+# Instala o Xdebug apenas se solicitado
+RUN if [ "$INSTALL_XDEBUG" = "true" ]; then \
+    apk update && \
+    apk add --no-cache \
+        php83-pecl-xdebug \
+    && echo "zend_extension=xdebug.so" > /etc/php83/conf.d/50_xdebug.ini && \
+    echo "xdebug.mode=debug" >> /etc/php83/conf.d/50_xdebug.ini && \
+    echo "xdebug.start_with_request=yes" >> /etc/php83/conf.d/50_xdebug.ini && \
+    echo "xdebug.client_host=host.docker.internal" >> /etc/php83/conf.d/50_xdebug.ini && \
+    echo "xdebug.client_port=9003" >> /etc/php83/conf.d/50_xdebug.ini; \
+else \
+    echo "Xdebug não será ativado" ; \
+fi
 WORKDIR /opt/www
 
 # Composer Cache
