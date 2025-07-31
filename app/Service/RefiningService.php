@@ -22,13 +22,12 @@ class RefiningService
         $refinements = $this->getRecipeFromItems($items);
         $itemsData = $this->findProfitableRecipes($refinements);
         $itemsData = $this->mapResponse($itemsData);
-        return $itemsData;
+        return array_values($itemsData) ;
     }
 
     private function getItemsToRefine(): Collection
     {
         $items = Item::where('shop_subcategory1', '=', 'refinedresources')
-            ->where('item_unique_name', 'LIKE', '%Cloth%')
             ->with(['itemPrices.city' => function ($query) {
                 $query->select('id', 'name');
             }])
@@ -51,9 +50,19 @@ class RefiningService
             }
             $itemsData[$item->item_unique_name] = [
                 'id' => $item->item_unique_name,
-                'sell_price_min' => $sellPriceMin,
-                'last_sell_price_min_date' => $item->itemPrices->first()->sell_price_min_date ?? '',
-                'city' => $item->itemPrices->first()->city->name ?? '',
+                // Encontra o menor preço por cidade
+                'sell_price_min_by_city' => collect($item->itemPrices)
+                    ->groupBy('city_id')
+                    ->map(function ($prices, $cityId) {
+                        $minPrice = $prices->min('sell_price_min');
+                        $priceEntry = $prices->where('sell_price_min', $minPrice)->first();
+                        return [
+                            'city_id' => $cityId,
+                            'city_name' => $priceEntry->city->name ?? '',
+                            'sell_price_min' => $minPrice,
+                            'last_sell_price_min_date' => $priceEntry->sell_price_min_date ?? '',
+                        ];
+                    })->values()->toArray(),
             ];
         }
         $keys = array_keys($itemsData);
@@ -66,43 +75,94 @@ class RefiningService
             ->get();
         foreach ($refinements as $refinement) {
             $itemName = $refinement->item->item_unique_name;
-            $refinement->ingredients = $refinement->ingredients->map(function ($ingredient) {
-                $cheapestIngredient = $ingredient->item->itemPrices->first();
-                $ingredient->item->min_price = $cheapestIngredient->sell_price_min ?? 0;
-                $ingredient->item->last_min_price_date = $cheapestIngredient->sell_price_min_date ?? '';
-                $ingredient->item->city_id = $cheapestIngredient->city_id ?? '';
+            // Para cada cidade do item, cria uma receita específica
+            foreach ($itemsData[$itemName]['sell_price_min_by_city'] as $cityData) {
+            $cityId = $cityData['city_id'];
+            $cityName = $cityData['city_name'];
+            // Ingredientes filtrados pelo preço mínimo na mesma cidade
+            $refinementIngredients = $refinement->ingredients->map(function ($ingredient) use ($cityId) {
+                // Filtra preços do ingrediente apenas para a cidade atual
+                $cheapestIngredient = $ingredient->item->itemPrices
+                ->where('city_id', $cityId)
+                ->where('sell_price_min', '>', 0)
+                ->sortBy('sell_price_min')
+                ->first();
+                $ingredient->item->min_price = $cheapestIngredient ? $cheapestIngredient->sell_price_min : 0;
+                $ingredient->item->last_min_price_date = $cheapestIngredient ? $cheapestIngredient->sell_price_min_date : '';
+                $ingredient->item->city_id = $cheapestIngredient ? $cheapestIngredient->city_id : $cityId;
                 return $ingredient;
             });
-            $itemsData[$itemName]['recipes'][] = $refinement->toArray();
+            // Adiciona receita específica para a cidade
+            $recipeArray = $refinement->toArray();
+            $recipeArray['ingredients'] = $refinementIngredients->toArray();
+            $recipeArray['city_id'] = $cityId;
+            $recipeArray['city_name'] = $cityName;
+            $itemsData[$itemName]['recipes'][] = $recipeArray;
+            }
         }
         return collect($itemsData);
     }
 
+
+    //TODO: need to be filtered by city
     private function findProfitableRecipes(Collection $items): ?Collection
     {
         return $items->map(function ($item) {
-            $minTotalCost = 0;
+            $cityProfits = [];
+            foreach ($item['sell_price_min_by_city'] as $cityData) {
+                $cityId = $cityData['city_id'];
+                $cityName = $cityData['city_name'];
+                $sellPriceMin = $cityData['sell_price_min'];
+                $minTotalCost = null;
+                $bestRecipe = null;
 
-            $item['recipes'] = collect($item['recipes'])->map(function ($recipe) use (&$minTotalCost) {
-                $totalCost = collect($recipe['ingredients'])->reduce(function ($carry, $ingredient) {
-                    return $carry + ($ingredient['item']['min_price'] * $ingredient['quantity']);
-                }, 0);
+                // Filtra receitas da cidade
+                $recipesForCity = collect($item['recipes'])->where('city_id', $cityId);
+                foreach ($recipesForCity as $recipe) {
+                    // Verifica se todos os ingredientes têm min_price > 0
+                    $allIngredientsHavePrice = collect($recipe['ingredients'])->every(function ($ingredient) {
+                        return isset($ingredient['item']['min_price']) && $ingredient['item']['min_price'] > 0;
+                    });
 
-                if ($minTotalCost === 0 || $totalCost < $minTotalCost) {
-                    $minTotalCost = $totalCost;
+                    if (!$allIngredientsHavePrice) {
+                        continue; // pula receitas com ingredientes sem preço
+                    }
+
+                    $totalCost = collect($recipe['ingredients'])->reduce(function ($carry, $ingredient) {
+                        return $carry + ($ingredient['item']['min_price'] * $ingredient['quantity']);
+                    }, 0);
+
+                    if ($minTotalCost === null || $totalCost < $minTotalCost) {
+                        $minTotalCost = $totalCost;
+                        $bestRecipe = $recipe;
+                        $bestRecipe['total_cost'] = $totalCost;
+                    }
                 }
-                $recipe['total_cost'] = $totalCost;
-                return $recipe;
-            })->toArray();
-            $expectedProfit = $item['sell_price_min'] - $minTotalCost;
-            $item['expected_profit'] = $expectedProfit;
-            return $item;
-        });
+
+                if ($bestRecipe) {
+                    $expectedProfit = $sellPriceMin - $minTotalCost;
+                    $cityProfits[] = [
+                        'id' => $item['id'],
+                        'sell_price_min' => $sellPriceMin,
+                        'last_sell_price_min_date' => $cityData['last_sell_price_min_date'],
+                        'city' => $cityName,
+                        'expected_profit' => $expectedProfit,
+                        'recipes' => [$bestRecipe],
+                    ];
+                }
+            }
+            return $cityProfits;
+        })
+            ->flatten(1)
+            ->filter(function ($item) {
+                return $item['expected_profit'] != 0 && !empty($item['recipes']);
+            })
+            ->sortByDesc('expected_profit');
     }
 
     private function mapResponse(Collection $items): array
     {
-        return $items->map(function ($item) {
+        return $items->map(function ($item) {   
             return [
                 'id' => $item['id'],
                 'sell_price_min' => $item['sell_price_min'],
