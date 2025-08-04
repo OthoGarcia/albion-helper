@@ -10,6 +10,9 @@ use function Hyperf\Collection\collect;
 
 class RefiningService
 {
+    const BASE_TAX = 0.1125; // Tax fee percentage
+    const TAX_AMOUNT = 300; // Taxa de imposto
+    const REFINING_RETURN_RATE = 0.367; // Taxa de retorno do refinamento
     /**
      * Retorna o refinamento mais lucrativo para um item.
      *
@@ -28,6 +31,8 @@ class RefiningService
     private function getItemsToRefine(): Collection
     {
         $items = Item::where('shop_subcategory1', '=', 'refinedresources')
+            ->where('shop_category', '=', 'crafting')
+            ->where('shop_subcategory1', '=', 'refinedresources')
             ->with(['itemPrices.city' => function ($query) {
                 $query->select('id', 'name');
             }])
@@ -50,17 +55,21 @@ class RefiningService
             }
             $itemsData[$item->item_unique_name] = [
                 'id' => $item->item_unique_name,
+                'refining_cost_per_unit' => round((($item->item_value * self::BASE_TAX) * self::TAX_AMOUNT) / 100),
                 // Encontra o menor preço por cidade
                 'sell_price_min_by_city' => collect($item->itemPrices)
                     ->groupBy('city_id')
                     ->map(function ($prices, $cityId) {
                         $minPrice = $prices->min('sell_price_min');
                         $priceEntry = $prices->where('sell_price_min', $minPrice)->first();
+                        $lastDate = $priceEntry->sell_price_min_date;
+                        $hoursSinceUpdate = $lastDate ? round((time() - strtotime($lastDate)) / 3600, 2) : null;
                         return [
                             'city_id' => $cityId,
                             'city_name' => $priceEntry->city->name ?? '',
                             'sell_price_min' => $minPrice,
-                            'last_sell_price_min_date' => $priceEntry->sell_price_min_date ?? '',
+                            'last_sell_price_min_date' => $lastDate,
+                            'sell_price_min_hours_since_update' => $hoursSinceUpdate,
                         ];
                     })->values()->toArray(),
             ];
@@ -77,27 +86,29 @@ class RefiningService
             $itemName = $refinement->item->item_unique_name;
             // Para cada cidade do item, cria uma receita específica
             foreach ($itemsData[$itemName]['sell_price_min_by_city'] as $cityData) {
-            $cityId = $cityData['city_id'];
-            $cityName = $cityData['city_name'];
-            // Ingredientes filtrados pelo preço mínimo na mesma cidade
-            $refinementIngredients = $refinement->ingredients->map(function ($ingredient) use ($cityId) {
-                // Filtra preços do ingrediente apenas para a cidade atual
-                $cheapestIngredient = $ingredient->item->itemPrices
-                ->where('city_id', $cityId)
-                ->where('sell_price_min', '>', 0)
-                ->sortBy('sell_price_min')
-                ->first();
-                $ingredient->item->min_price = $cheapestIngredient ? $cheapestIngredient->sell_price_min : 0;
-                $ingredient->item->last_min_price_date = $cheapestIngredient ? $cheapestIngredient->sell_price_min_date : '';
-                $ingredient->item->city_id = $cheapestIngredient ? $cheapestIngredient->city_id : $cityId;
-                return $ingredient;
-            });
-            // Adiciona receita específica para a cidade
-            $recipeArray = $refinement->toArray();
-            $recipeArray['ingredients'] = $refinementIngredients->toArray();
-            $recipeArray['city_id'] = $cityId;
-            $recipeArray['city_name'] = $cityName;
-            $itemsData[$itemName]['recipes'][] = $recipeArray;
+                $cityId = $cityData['city_id'];
+                $cityName = $cityData['city_name'];
+                // Ingredientes filtrados pelo preço mínimo na mesma cidade
+                $refinementIngredients = $refinement->ingredients->map(function ($ingredient) use ($cityId) {
+                    // Filtra preços do ingrediente apenas para a cidade atual
+                    $cheapestIngredient = $ingredient->item->itemPrices
+                        ->where('city_id', $cityId)
+                        ->where('sell_price_min', '>', 0)
+                        ->sortBy('sell_price_min')
+                        ->first();
+                    $ingredient->item->min_price = $cheapestIngredient ? $cheapestIngredient->sell_price_min : 0;
+                    $ingredient->item->last_min_price_date = $cheapestIngredient ? $cheapestIngredient->sell_price_min_date : '';
+                    $ingredient->item->city_id = $cheapestIngredient ? $cheapestIngredient->city_id : $cityId;
+                    $lastDate = $ingredient->item->last_min_price_date;
+                    $ingredient->item->min_price_hours_since_update = $lastDate ? round((time() - strtotime($lastDate)) / 3600, 2) : null;
+                    return $ingredient;
+                });
+                // Adiciona receita específica para a cidade
+                $recipeArray = $refinement->toArray();
+                $recipeArray['ingredients'] = $refinementIngredients->toArray();
+                $recipeArray['city_id'] = $cityId;
+                $recipeArray['city_name'] = $cityName;
+                $itemsData[$itemName]['recipes'][] = $recipeArray;
             }
         }
         return collect($itemsData);
@@ -131,11 +142,18 @@ class RefiningService
                     $totalCost = collect($recipe['ingredients'])->reduce(function ($carry, $ingredient) {
                         return $carry + ($ingredient['item']['min_price'] * $ingredient['quantity']);
                     }, 0);
-
-                    if ($minTotalCost === null || $totalCost < $minTotalCost) {
-                        $minTotalCost = $totalCost;
+                    $totalReturn = collect($recipe['ingredients'])->reduce(function ($carry, $ingredient) {
+                        return $carry + ($ingredient['quantity'] * $ingredient['item']['min_price'] * self::REFINING_RETURN_RATE);
+                    }, 0);
+                    $totalReturn = round($totalReturn, 0);
+                    $totalCost += $item['refining_cost_per_unit'];
+                    $cost = $totalCost - $totalReturn;
+                    if ($minTotalCost === null || $cost < $minTotalCost) {
+                        $minTotalCost = $cost;
                         $bestRecipe = $recipe;
                         $bestRecipe['total_cost'] = $totalCost;
+                        $bestRecipe['return_value'] = $totalReturn;
+                        $bestRecipe['cost'] = $cost;
                     }
                 }
 
@@ -143,6 +161,7 @@ class RefiningService
                     $expectedProfit = $sellPriceMin - $minTotalCost;
                     $cityProfits[] = [
                         'id' => $item['id'],
+                        'refining_cost_per_unit' => $item['refining_cost_per_unit'],
                         'sell_price_min' => $sellPriceMin,
                         'last_sell_price_min_date' => $cityData['last_sell_price_min_date'],
                         'city' => $cityName,
@@ -166,7 +185,9 @@ class RefiningService
             return [
                 'id' => $item['id'],
                 'sell_price_min' => $item['sell_price_min'],
+                'refining_cost_per_unit' => $item['refining_cost_per_unit'] ?? 0,
                 'last_sell_price_min_date' => $item['last_sell_price_min_date'],
+                'sell_price_min_hours_since_update' => $item['sell_price_min_hours_since_update'] ?? null,
                 'city' => $item['city'],
                 'expected_profit' => $item['expected_profit'],
                 'recipes' => collect($item['recipes'])->map(function ($recipe) {
@@ -179,6 +200,8 @@ class RefiningService
                         'conditions' => $recipe['conditions'],
                         'crafting_focus' => $recipe['crafting_focus'],
                         'total_cost' => $recipe['total_cost'],
+                        'return_value' => $recipe['return_value'],
+                        'cost' => $recipe['cost'],
                         'ingredients' => collect($recipe['ingredients'])->map(function ($ingredient) {
                             return [
                                 'ingredient_item_unique_name' => $ingredient['ingredient_item_unique_name'],
@@ -187,6 +210,7 @@ class RefiningService
                                 'min_price' => $ingredient['item']['min_price'] ?? 0,
                                 'last_min_price_date' => $ingredient['item']['last_min_price_date'] ?? '',
                                 'city' => $ingredient['item']['city_id'] ?? null,
+                                'min_price_hours_since_update' => $ingredient['item']['min_price_hours_since_update'] ?? null,
                             ];
                         })->toArray(),
                     ];
