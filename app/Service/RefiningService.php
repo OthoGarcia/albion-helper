@@ -12,7 +12,7 @@ class RefiningService
 {
     const BASE_TAX = 0.1125; // Tax fee percentage
     const TAX_AMOUNT = 300; // Taxa de imposto
-    const REFINING_RETURN_RATE = 0.367; // Taxa de retorno do refinamento
+    const BASE_REFINING_RETURN_RATE = 15.3; // Taxa de retorno do refinamento
     /**
      * Retorna o refinamento mais lucrativo para um item.
      *
@@ -34,7 +34,7 @@ class RefiningService
             ->where('shop_category', '=', 'crafting')
             ->where('shop_subcategory1', '=', 'refinedresources')
             ->with(['itemPrices.city' => function ($query) {
-                $query->select('id', 'name');
+                $query->select('id', 'name', 'refine_type', 'refine_bonus_percentage');
             }])
             ->with(['itemPrices' => function ($query) {
                 $query->where('quality', '=', 0)
@@ -57,6 +57,7 @@ class RefiningService
                 'id' => $item->item_unique_name,
                 'refining_cost_per_unit' => round((($item->item_value * self::BASE_TAX) * self::TAX_AMOUNT) / 100),
                 // Encontra o menor preço por cidade
+                'refine_type' => $item->shop_subcategory2,
                 'sell_price_min_by_city' => collect($item->itemPrices)
                     ->groupBy('city_id')
                     ->map(function ($prices, $cityId) {
@@ -67,6 +68,8 @@ class RefiningService
                         return [
                             'city_id' => $cityId,
                             'city_name' => $priceEntry->city->name ?? '',
+                            'city_refine_type' => $priceEntry->city->refine_type ?? '',
+                            'city_refine_bonus_percentage' => $priceEntry->city->refine_bonus_percentage,
                             'sell_price_min' => $minPrice,
                             'last_sell_price_min_date' => $lastDate,
                             'sell_price_min_hours_since_update' => $hoursSinceUpdate,
@@ -127,6 +130,13 @@ class RefiningService
                 $minTotalCost = null;
                 $bestRecipe = null;
 
+                if ($item['refine_type'] === $cityData['city_refine_type']) {
+                    $refining_bonus = (float) $cityData['city_refine_bonus_percentage'];
+                }
+                else {
+                    $refining_bonus = self::BASE_REFINING_RETURN_RATE;
+                }
+
                 // Filtra receitas da cidade
                 $recipesForCity = collect($item['recipes'])->where('city_id', $cityId);
                 foreach ($recipesForCity as $recipe) {
@@ -142,8 +152,8 @@ class RefiningService
                     $totalCost = collect($recipe['ingredients'])->reduce(function ($carry, $ingredient) {
                         return $carry + ($ingredient['item']['min_price'] * $ingredient['quantity']);
                     }, 0);
-                    $totalReturn = collect($recipe['ingredients'])->reduce(function ($carry, $ingredient) {
-                        return $carry + ($ingredient['quantity'] * $ingredient['item']['min_price'] * self::REFINING_RETURN_RATE);
+                    $totalReturn = collect($recipe['ingredients'])->reduce(function ($carry, $ingredient) use ($refining_bonus) {
+                        return $carry + ($ingredient['quantity'] * $ingredient['item']['min_price'] * ($refining_bonus/100));
                     }, 0);
                     $totalReturn = round($totalReturn, 0);
                     $totalCost += $item['refining_cost_per_unit'];

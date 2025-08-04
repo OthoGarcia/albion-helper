@@ -18,12 +18,14 @@ class City extends Model
     /**
      * The attributes that are mass assignable.
      */
-    protected array $fillable = ['name', 'type', 'region', 'notes'];
+    protected array $fillable = ['name', 'type', 'region', 'notes', 'refine_type', 'refine_bonus_percentage'];
 
     /**
      * The attributes that should be cast to native types.
      */
-    protected array $casts = [];
+    protected array $casts = [
+        'refine_bonus_percentage' => 'decimal:2',
+    ];
 
     public function itemPrices()
     {
