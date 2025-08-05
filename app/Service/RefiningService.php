@@ -19,10 +19,16 @@ class RefiningService
      * @param array $refinements Lista de refinamentos possíveis. Cada item deve conter 'name', 'cost', 'expected_profit'.
      * @return array|null Refinamento mais lucrativo ou null se lista vazia.
      */
-    public function getMostProfitableRefinement(array $refinements): array
+    public function getMostProfitableRefinement(array $queryParams): array
     {
+        $cityId = $queryParams['cityId'] ?? null;
+        $taxAmount = (int) ($queryParams['taxAmount'] ?? self::TAX_AMOUNT);
         $items = $this->getItemsToRefine();
-        $refinements = $this->getRecipeFromItems($items);
+        $refinements = $this->getRecipeFromItems(
+            $items,
+            $cityId,
+            $taxAmount
+        );
         $itemsData = $this->findProfitableRecipes($refinements);
         $itemsData = $this->mapResponse($itemsData);
         return array_values($itemsData) ;
@@ -45,7 +51,7 @@ class RefiningService
         return $items->get();
     }
 
-    private function getRecipeFromItems(Collection $items): Collection
+    private function getRecipeFromItems(Collection $items, int|null $cityId, int|null $taxAmount): Collection
     {
         $itemsData = [];
         foreach ($items as $item) {
@@ -53,12 +59,18 @@ class RefiningService
             if ($sellPriceMin <= 0) {
                 continue; // Skip items with no sell price
             }
+            if ($cityId) {
+                $sellMinPriceByCity = $item->itemPrices()->where('city_id', '=', $cityId)->get();
+            }else {
+                $sellMinPriceByCity = $item->itemPrices;
+            }
+
             $itemsData[$item->item_unique_name] = [
                 'id' => $item->item_unique_name,
-                'refining_cost_per_unit' => round((($item->item_value * self::BASE_TAX) * self::TAX_AMOUNT) / 100),
+                'refining_cost_per_unit' => round((($item->item_value * self::BASE_TAX) * $taxAmount) / 100),
                 // Encontra o menor preço por cidade
                 'refine_type' => $item->shop_subcategory2,
-                'sell_price_min_by_city' => collect($item->itemPrices)
+                'sell_price_min_by_city' => $sellMinPriceByCity
                     ->groupBy('city_id')
                     ->map(function ($prices, $cityId) {
                         $minPrice = $prices->min('sell_price_min');

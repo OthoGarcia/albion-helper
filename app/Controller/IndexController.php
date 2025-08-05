@@ -13,12 +13,14 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Service\RefiningService;
+use Hyperf\HttpServer\Contract\RequestInterface;
 
 class IndexController extends AbstractController
 {
-    public function index(RefiningService $refiningService)
+    public function index(RequestInterface $request, RefiningService $refiningService)
     {
-        $items = $refiningService->getMostProfitableRefinement([]);
+        $requestData = $request->all();
+        $items = $refiningService->getMostProfitableRefinement($requestData);
         return $this->response->json($items);
     }
 }
