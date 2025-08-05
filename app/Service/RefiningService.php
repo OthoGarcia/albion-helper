@@ -169,6 +169,8 @@ class RefiningService
 
                 if ($bestRecipe) {
                     $expectedProfit = $sellPriceMin - $minTotalCost;
+                    $expectedProfit = $expectedProfit - ($minTotalCost * 0.08) - ($minTotalCost * 0.025);
+                    $expectedProfit = round($expectedProfit, 0);
                     $cityProfits[] = [
                         'id' => $item['id'],
                         'refining_cost_per_unit' => $item['refining_cost_per_unit'],
