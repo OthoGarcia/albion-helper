@@ -17,7 +17,7 @@ use Hyperf\HttpServer\Contract\RequestInterface;
 
 class IndexController extends AbstractController
 {
-    public function index(RequestInterface $request, RefiningService $refiningService)
+    public function refinements(RequestInterface $request, RefiningService $refiningService)
     {
         $requestData = $request->all();
         $items = $refiningService->getMostProfitableRefinement($requestData);
