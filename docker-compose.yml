@@ -26,6 +26,7 @@ services:
       MYSQL_DATABASE: albion             # nome do banco que será criado automaticamente
       MYSQL_USER: albion               # usuário adicional (opcional)
       MYSQL_PASSWORD: albion           # senha do usuário (opcional)
+      TZ: UTC
     ports:
       - "3306:3306"
     volumes:

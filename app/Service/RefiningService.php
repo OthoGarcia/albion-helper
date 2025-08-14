@@ -60,7 +60,9 @@ class RefiningService
                 continue; // Skip items with no sell price
             }
             if ($cityId) {
-                $sellMinPriceByCity = $item->itemPrices()->where('city_id', '=', $cityId)->get();
+                $sellMinPriceByCity = $item->itemPrices()
+                ->where('city_id', '=', $cityId)
+                ->get();
             }else {
                 $sellMinPriceByCity = $item->itemPrices;
             }
@@ -91,10 +93,15 @@ class RefiningService
         }
         $keys = array_keys($itemsData);
         $refinements = Recipe::whereIn('item_unique_name', $keys)
-            ->with(['ingredients.item.itemPrices' => function ($query) {
-                $query->where('quality', '=', 0)
+            ->with(['ingredients.item.itemPrices' => function ($query) use ($cityId) {
+                if ($cityId) {
+                    $query->where('city_id', '=', $cityId);
+                }
+                $query
+                    ->where('quality', '=', 0)
                     ->where('sell_price_min', '>', 0)
-                    ->orderBy('sell_price_min', 'asc');
+                    ->whereRaw("TIMEDIFF(now(), sell_price_min_date) < '02:00:00'")
+                    ->orderBy('sell_price_min_date', 'desc');
             }])
             ->get();
         foreach ($refinements as $refinement) {
@@ -106,11 +113,7 @@ class RefiningService
                 // Ingredientes filtrados pelo preço mínimo na mesma cidade
                 $refinementIngredients = $refinement->ingredients->map(function ($ingredient) use ($cityId) {
                     // Filtra preços do ingrediente apenas para a cidade atual
-                    $cheapestIngredient = $ingredient->item->itemPrices
-                        ->where('city_id', $cityId)
-                        ->where('sell_price_min', '>', 0)
-                        ->sortBy('sell_price_min')
-                        ->first();
+                    $cheapestIngredient = $ingredient->item->itemPrices->first();
                     $ingredient->item->min_price = $cheapestIngredient ? $cheapestIngredient->sell_price_min : 0;
                     $ingredient->item->last_min_price_date = $cheapestIngredient ? $cheapestIngredient->sell_price_min_date : '';
                     $ingredient->item->city_id = $cheapestIngredient ? $cheapestIngredient->city_id : $cityId;
@@ -130,7 +133,6 @@ class RefiningService
     }
 
 
-    //TODO: need to be filtered by city
     private function findProfitableRecipes(Collection $items): ?Collection
     {
         return $items->map(function ($item) {

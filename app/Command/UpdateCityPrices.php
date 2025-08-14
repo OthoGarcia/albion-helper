@@ -82,6 +82,8 @@ class UpdateCityPrices extends HyperfCommand
                 $cityItemPrice = $city->itemPrices()->updateOrCreate(
                     [
                         'item_unique_name' => $item['item_id'],
+                        'sell_price_min' => $item['sell_price_min'],
+                        'sell_price_min_date' => $this->getBaseDate($item['sell_price_min_date']),
                     ],
                     [
                         'sell_price_min' => $item['sell_price_min'],
