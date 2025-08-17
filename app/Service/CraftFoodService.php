@@ -8,7 +8,7 @@ use Hyperf\Collection\Collection;
 
 use function Hyperf\Collection\collect;
 
-class RefiningService
+class CraftFoodService
 {
     const BASE_TAX = 0.1125; // Tax fee percentage
     const TAX_AMOUNT = 300; // Taxa de imposto
@@ -19,7 +19,7 @@ class RefiningService
      * @param array $refinements Lista de refinamentos possíveis. Cada item deve conter 'name', 'cost', 'expected_profit'.
      * @return array|null Refinamento mais lucrativo ou null se lista vazia.
      */
-    public function getMostProfitableRefinement(array $queryParams): array
+    public function getMostProfitableFoodCrafting(array $queryParams): array
     {
         $cityId = $queryParams['cityId'] ?? null;
         $taxAmount = (int) ($queryParams['taxAmount'] ?? self::TAX_AMOUNT);
@@ -36,17 +36,16 @@ class RefiningService
 
     private function getItemsToRefine(): Collection
     {
-        $items = Item::where('shop_subcategory1', '=', 'refinedresources')
-            ->where('shop_category', '=', 'crafting')
-            ->where('shop_subcategory1', '=', 'refinedresources')
+        $items = Item::where('shop_subcategory1', '=', 'food')
+            ->where('shop_category', '=', 'consumables')
+            ->where('shop_subcategory2', '!=', 'event')
             ->with(['itemPrices.city' => function ($query) {
                 $query->select('id', 'name', 'refine_type', 'refine_bonus_percentage');
             }])
             ->with(['itemPrices' => function ($query) {
                 $query->where('quality', '=', 0)
                     ->where('sell_price_min', '>', 0)
-                    ->whereRaw("TIMEDIFF(now(), sell_price_min_date) < '02:00:00'")
-                    ->orderBy('sell_price_min_date', 'desc');
+                    ->orderBy('sell_price_min', 'asc');
             }]);
 
         return $items->get();
@@ -169,7 +168,7 @@ class RefiningService
                     $totalCost = collect($recipe['ingredients'])->reduce(function ($carry, $ingredient) {
                         return $carry + ($ingredient['item']['min_price'] * $ingredient['quantity']);
                     }, 0);
-                    $totalReturn = collect($recipe['ingredients'])->reduce(function ($carry, $ingredient) use ($refining_bonus) {
+                    $totalReturn = collect($recipe['ingredients'])->reduce(function ($carry, $ingredient) use ($refining_bonus, $recipe) {
                         return $carry + ($ingredient['quantity'] * $ingredient['item']['min_price'] * ($refining_bonus/100));
                     }, 0);
                     $totalReturn = round($totalReturn, 0);
@@ -185,7 +184,7 @@ class RefiningService
                 }
 
                 if ($bestRecipe) {
-                    $expectedProfit = $sellPriceMin - $minTotalCost;
+                    $expectedProfit = ($sellPriceMin * (int)$bestRecipe['output_quantity']) - $minTotalCost;
                     $expectedProfit = $expectedProfit - ($minTotalCost * 0.08) - ($minTotalCost * 0.025);
                     $expectedProfit = round($expectedProfit, 0);
                     $cityProfits[] = [

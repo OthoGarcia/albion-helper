@@ -13,3 +13,4 @@ use Hyperf\HttpServer\Router\Router;
 
 Router::get('/refinements', 'App\Controller\IndexController@refinements');
 
+Router::get('/craft/food', 'App\Controller\IndexController@craftFood');

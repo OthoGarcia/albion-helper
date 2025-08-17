@@ -32,26 +32,32 @@ class UpdateCityPrices extends HyperfCommand
     public function handle()
     {
         $this->line('Updating city prices...', 'info');
-
-        $items = $this->getAllItems();
+        $updates = [
+            'items' => $this->getRefinementsItems(),
+            'food' => $this->getCraftFoodItems()
+        ];
         $cities = $this->getCities();
 
         $client = new Client();
-        $response = $client->get(
-            uri: self::CITY_PRICES_URL . implode(',', $items),
-            options: [
-                'timeout' => 10,
-                'query' => [
-                    'locations' => $cities->pluck('name')->implode(','),
-                    'qualities' => '1',
+    
+        foreach ($updates as $key => $update) {
+            $response = $client->get(
+                uri: self::CITY_PRICES_URL . implode(',', $update),
+                options: [
+                    'timeout' => 10,
+                    'query' => [
+                        'locations' => $cities->pluck('name')->implode(','),
+                        'qualities' => '1',
+                    ]
                 ]
-            ]
-        );
-        $data = json_decode($response->getBody()->getContents(), true);
-        $this->processCityPrices($data);
+            );
+            $data = json_decode($response->getBody()->getContents(), true);
+            $this->processCityPrices($data);
+        }
+        
     }
 
-    private function getAllItems(): array
+    private function getRefinementsItems(): array
     {
         $items = Db::select("select DISTINCT 
             ri.ingredient_item_unique_name as item_unique_name
@@ -61,6 +67,20 @@ class UpdateCityPrices extends HyperfCommand
             where shop_subcategory1 = 'refinedresources'
             UNION 
             select i2.item_unique_name from items i2 where i2.shop_subcategory1 = 'refinedresources'"
+        );
+        return collect($items)->pluck('item_unique_name')->toArray();
+    }
+
+    private function getCraftFoodItems(): array
+    {
+        $items = Db::select("select DISTINCT 
+            ri.ingredient_item_unique_name as item_unique_name
+            from items i 
+            join recipes r on r.item_unique_name = i.item_unique_name
+            join recipe_ingredients ri on ri.recipe_id  = r.recipe_id 
+            where shop_subcategory1 = 'food'
+            UNION 
+            select i2.item_unique_name from items i2 where i2.shop_subcategory1 = 'food'"
         );
         return collect($items)->pluck('item_unique_name')->toArray();
     }

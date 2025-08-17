@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
+use App\Service\CraftFoodService;
 use App\Service\RefiningService;
 use Hyperf\HttpServer\Contract\RequestInterface;
 
@@ -21,6 +22,13 @@ class IndexController extends AbstractController
     {
         $requestData = $request->all();
         $items = $refiningService->getMostProfitableRefinement($requestData);
+        return $this->response->json($items);
+    }
+
+    public function craftFood(RequestInterface $request, CraftFoodService $craftFoodService)
+    {
+        $requestData = $request->all();
+        $items = $craftFoodService->getMostProfitableFoodCrafting($requestData);
         return $this->response->json($items);
     }
 }
