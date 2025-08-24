@@ -184,8 +184,10 @@ class CraftFoodService
                 }
 
                 if ($bestRecipe) {
-                    $expectedProfit = ($sellPriceMin * (int)$bestRecipe['output_quantity']) - $minTotalCost;
-                    $expectedProfit = $expectedProfit - ($minTotalCost * 0.08) - ($minTotalCost * 0.025);
+                    $outputQuantity = (int)$bestRecipe['output_quantity'];
+                    $expectedProfit = ($sellPriceMin * $outputQuantity) - $minTotalCost;
+                    $expectedProfit = $expectedProfit - ($minTotalCost * 0.08); // Deduzir 8% de taxa de venda
+                    $expectedProfit = $expectedProfit - ($minTotalCost * 0.025); // Deduzir 2.5% de taxa de venda
                     $expectedProfit = round($expectedProfit, 0);
                     $cityProfits[] = [
                         'id' => $item['id'],
