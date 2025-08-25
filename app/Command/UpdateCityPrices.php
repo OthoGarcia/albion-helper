@@ -78,9 +78,9 @@ class UpdateCityPrices extends HyperfCommand
             from items i 
             join recipes r on r.item_unique_name = i.item_unique_name
             join recipe_ingredients ri on ri.recipe_id  = r.recipe_id 
-            where shop_subcategory1 = 'food'
+            where shop_category = 'consumables'
             UNION 
-            select i2.item_unique_name from items i2 where i2.shop_subcategory1 = 'food'"
+            select i2.item_unique_name from items i2 where i2.shop_category = 'consumables'"
         );
         return collect($items)->pluck('item_unique_name')->toArray();
     }

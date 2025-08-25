@@ -12,7 +12,7 @@ class CraftFoodService
 {
     const BASE_TAX = 0.1125; // Tax fee percentage
     const TAX_AMOUNT = 300; // Taxa de imposto
-    const BASE_REFINING_RETURN_RATE = 15.3; // Taxa de retorno do refinamento
+    const BASE_REFINING_RETURN_RATE = 15.2; // Taxa de retorno do refinamento
     /**
      * Retorna o refinamento mais lucrativo para um item.
      *
@@ -36,7 +36,7 @@ class CraftFoodService
 
     private function getItemsToRefine(): Collection
     {
-        $items = Item::where('shop_subcategory1', '=', 'food')
+        $items = Item::whereIn('shop_subcategory1', ['food', 'potions'])
             ->where('shop_category', '=', 'consumables')
             ->where('shop_subcategory2', '!=', 'event')
             ->with(['itemPrices.city' => function ($query) {
