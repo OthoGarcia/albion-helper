@@ -8,7 +8,7 @@ use Hyperf\Collection\Collection;
 
 use function Hyperf\Collection\collect;
 
-class CraftFoodService
+class CraftItemsService
 {
     const BASE_TAX = 0.1125; // Tax fee percentage
     const TAX_AMOUNT = 300; // Taxa de imposto
@@ -36,8 +36,7 @@ class CraftFoodService
 
     private function getItemsToRefine(): Collection
     {
-        $items = Item::whereIn('shop_subcategory1', ['food', 'potions'])
-            ->where('shop_category', '=', 'consumables')
+        $items = Item::where('shop_category', '=', 'accessoires')
             ->where('shop_subcategory2', '!=', 'event')
             ->with(['itemPrices.city' => function ($query) {
                 $query->select('id', 'name', 'refine_type', 'refine_bonus_percentage');
@@ -146,8 +145,12 @@ class CraftFoodService
                 $minTotalCost = null;
                 $bestRecipe = null;
 
-                $refining_bonus = self::BASE_REFINING_RETURN_RATE;
-                
+                if ($item['refine_type'] === $cityData['city_refine_type']) {
+                    $refining_bonus = (float) $cityData['city_refine_bonus_percentage'];
+                }
+                else {
+                    $refining_bonus = self::BASE_REFINING_RETURN_RATE;
+                }
 
                 // Filtra receitas da cidade
                 $recipesForCity = collect($item['recipes'])->where('city_id', $cityId);
@@ -181,10 +184,9 @@ class CraftFoodService
 
                 if ($bestRecipe) {
                     $outputQuantity = (int)$bestRecipe['output_quantity'];
-                    $taotalSellValue = $sellPriceMin * $outputQuantity;
                     $expectedProfit = ($sellPriceMin * $outputQuantity) - $minTotalCost;
-                    $expectedProfit = $expectedProfit - ($taotalSellValue * 0.08); // Deduzir 8% de taxa de venda
-                    $expectedProfit = $expectedProfit - ($taotalSellValue * 0.025); // Deduzir 2.5% de taxa de venda
+                    $expectedProfit = $expectedProfit - ($minTotalCost * 0.08); // Deduzir 8% de taxa de venda
+                    $expectedProfit = $expectedProfit - ($minTotalCost * 0.025); // Deduzir 2.5% de taxa de venda
                     $expectedProfit = round($expectedProfit, 0);
                     $cityProfits[] = [
                         'id' => $item['id'],

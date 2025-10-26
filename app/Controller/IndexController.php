@@ -13,8 +13,11 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Service\CraftFoodService;
+use App\Service\CraftItemsService;
 use App\Service\RefiningService;
 use Hyperf\HttpServer\Contract\RequestInterface;
+
+use function Hyperf\Support\make;
 
 class IndexController extends AbstractController
 {
@@ -29,6 +32,14 @@ class IndexController extends AbstractController
     {
         $requestData = $request->all();
         $items = $craftFoodService->getMostProfitableFoodCrafting($requestData);
+        return $this->response->json($items);
+    }
+
+    public function craftItems(RequestInterface $request)
+    {
+        $craftItemsService = make(CraftItemsService::class);
+        $requestData = $request->all();
+        $items = $craftItemsService->getMostProfitableFoodCrafting($requestData);
         return $this->response->json($items);
     }
 }

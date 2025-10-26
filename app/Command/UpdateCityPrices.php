@@ -9,6 +9,7 @@ use GuzzleHttp\Client;
 use Hyperf\Collection\Collection;
 use Hyperf\Command\Command as HyperfCommand;
 use Hyperf\Command\Annotation\Command;
+use Hyperf\Coroutine\Parallel;
 use Hyperf\DbConnection\Db;
 use Psr\Container\ContainerInterface;
 
@@ -34,26 +35,31 @@ class UpdateCityPrices extends HyperfCommand
         $this->line('Updating city prices...', 'info');
         $updates = [
             'items' => $this->getRefinementsItems(),
-            'food' => $this->getCraftFoodItems()
+            'food' => $this->getCraftFoodItems(),
+            'equipaments' => $this->getCraftEquipamentsItems(),
+            'armors' => $this->getCraftArmorItems()
         ];
         $cities = $this->getCities();
 
         $client = new Client();
-    
+        $parallel = new Parallel();
         foreach ($updates as $key => $update) {
-            $response = $client->get(
+            $parallel->add(function () use ($client, $cities, $update) {
+               $response = $client->get(
                 uri: self::CITY_PRICES_URL . implode(',', $update),
                 options: [
                     'timeout' => 10,
                     'query' => [
-                        'locations' => $cities->pluck('name')->implode(','),
-                        'qualities' => '1',
+                        'locations' => $cities->pluck('name')->implode(',')
                     ]
                 ]
             );
             $data = json_decode($response->getBody()->getContents(), true);
             $this->processCityPrices($data);
+            });
         }
+        $parallel->wait();
+        $this->line('City prices updated successfully!', 'info');
         
     }
 
@@ -84,6 +90,33 @@ class UpdateCityPrices extends HyperfCommand
         );
         return collect($items)->pluck('item_unique_name')->toArray();
     }
+
+    private function getCraftEquipamentsItems(): array
+    {
+        $items = Db::select("select DISTINCT 
+            ri.ingredient_item_unique_name as item_unique_name
+            from items i 
+            join recipes r on r.item_unique_name = i.item_unique_name
+            join recipe_ingredients ri on ri.recipe_id  = r.recipe_id 
+            where shop_category = 'accessoires'
+            UNION 
+            select i2.item_unique_name from items i2 where i2.shop_category = 'accessoires'"
+        );
+        return collect($items)->pluck('item_unique_name')->toArray();
+    }
+
+    private function getCraftArmorItems(): array
+    {
+        $items = Db::select("select DISTINCT 
+            ri.ingredient_item_unique_name as item_unique_name
+            from items i 
+            join recipes r on r.item_unique_name = i.item_unique_name
+            join recipe_ingredients ri on ri.recipe_id  = r.recipe_id 
+            where shop_category = 'armors'"
+        );
+        return collect($items)->pluck('item_unique_name')->toArray();
+    }
+
 
     private function getCities(): Collection
     {
